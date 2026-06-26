@@ -6,9 +6,6 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-variables:
-  GITHUB_REPO: 'https://github.com/Pappas313/SugarFeet.git'
-
 steps:
   - checkout: self
     fetchDepth: 0
@@ -18,7 +15,9 @@ steps:
       git config --global user.email "pipeline@sugafeet.com"
       git config --global user.name "Azure DevOps Mirror"
 
-      git remote add github https://$(GITHUB_PAT)@github.com/Pappas313/SugarFeet.git
+      git remote add github https://$GITHUB_PAT@github.com/Pappas313/SugarFeet.git
 
       git push github --mirror
     displayName: 'Mirror to GitHub'
+    env:
+      GITHUB_PAT: $(GITHUB_PAT)
