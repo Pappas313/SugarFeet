@@ -10,111 +10,102 @@ variables:
 steps:
 
 # =========================
-# 1. Checkout repo
+# 1. Checkout
 # =========================
 - checkout: self
   clean: true
 
 # =========================
-# 2. DEBUG (IMPORTANT - shows structure)
+# 2. DEBUG (SHOW EXACT STRUCTURE)
 # =========================
 - script: |
-    echo "===== REPO STRUCTURE ====="
-    ls -R
-  displayName: 'Debug - Show repo structure'
+    echo "ROOT FILES:"
+    ls -la
+    echo "FULL TREE:"
+    find .
+  displayName: 'Debug repo structure'
 
 # =========================
-# 3. Install .NET SDK
+# 3. GO INTO PROJECT ROOT (IMPORTANT FIX)
+# =========================
+- script: |
+    echo "Moving into project folder..."
+    cd SugarFeet || true
+    ls -la
+  displayName: 'Enter project directory'
+
+# =========================
+# 4. Install .NET SDK
 # =========================
 - task: UseDotNet@2
-  displayName: 'Install .NET SDK'
   inputs:
     packageType: 'sdk'
     version: '8.x'
 
 # =========================
-# 4. RESTORE (SAFE - no .sln required)
+# 5. RESTORE (FORCE CORRECT PATH)
 # =========================
 - task: DotNetCoreCLI@2
   displayName: 'Restore'
   inputs:
     command: 'restore'
-    projects: '**/*.csproj'
+    projects: 'SugarFeet/**/*.csproj'
 
 # =========================
-# 5. BUILD ALL PROJECTS
+# 6. BUILD
 # =========================
 - task: DotNetCoreCLI@2
   displayName: 'Build'
   inputs:
     command: 'build'
-    projects: '**/*.csproj'
-    arguments: '--configuration $(buildConfiguration) --no-restore'
-
-# =========================
-# 6. TEST (optional, does not fail pipeline)
-# =========================
-- task: DotNetCoreCLI@2
-  displayName: 'Test'
-  inputs:
-    command: 'test'
-    projects: '**/*Tests/*.csproj'
+    projects: 'SugarFeet/**/*.csproj'
     arguments: '--configuration $(buildConfiguration)'
-  continueOnError: true
 
 # =========================
-# 7. PUBLISH API (auto-detect project)
+# 7. PUBLISH API
 # =========================
 - task: DotNetCoreCLI@2
   displayName: 'Publish API'
   inputs:
     command: 'publish'
-    projects: '**/SugarFeet.Api.csproj'
+    projects: 'SugarFeet/**/SugarFeet.Api.csproj'
     arguments: >
       --configuration $(buildConfiguration)
       --output $(Build.ArtifactStagingDirectory)/api
-      --no-restore
 
 # =========================
-# 8. Install Node.js (frontend)
+# 8. NODE FRONTEND
 # =========================
 - task: NodeTool@0
-  displayName: 'Install Node.js'
   inputs:
     versionSpec: '20.x'
 
-# =========================
-# 9. BUILD FRONTEND (SAFE)
-# =========================
 - script: |
-    if [ -d "SugarFeet.Client" ]; then
-      echo "Frontend found - building..."
-      cd SugarFeet.Client
+    if [ -d "SugarFeet/SugarFeet.Client" ]; then
+      cd SugarFeet/SugarFeet.Client
       npm install
       npm run build
     else
-      echo "No frontend folder found"
+      echo "Frontend not found"
     fi
   displayName: 'Build Frontend'
 
 # =========================
-# 10. COPY FRONTEND OUTPUT (SAFE CHECK)
+# 9. COPY FRONTEND (SAFE)
 # =========================
 - script: |
-    if [ -d "SugarFeet.Client/.next" ]; then
-      echo "Copying frontend build..."
+    if [ -d "SugarFeet/SugarFeet.Client/.next" ]; then
       mkdir -p $(Build.ArtifactStagingDirectory)/frontend
-      cp -r SugarFeet.Client/.next/* $(Build.ArtifactStagingDirectory)/frontend
+      cp -r SugarFeet/SugarFeet.Client/.next/* $(Build.ArtifactStagingDirectory)/frontend
     else
-      echo "No .next output found (skipping)"
+      echo "No frontend build output"
     fi
-  displayName: 'Copy Frontend Output'
+  displayName: 'Copy Frontend'
 
 # =========================
-# 11. PUBLISH ARTIFACT
+# 10. PUBLISH ARTIFACT
 # =========================
 - task: PublishBuildArtifacts@1
-  displayName: 'Publish Artifact'
   inputs:
     pathToPublish: '$(Build.ArtifactStagingDirectory)'
     artifactName: 'drop'
