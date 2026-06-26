@@ -8,11 +8,10 @@ pr: none
 pool:
   vmImage: ubuntu-latest
 
-variables:
-  AZURE_REPO_URL: 'https://dev.azure.com/FirstStepProjects/SugarFeetProject/_git/SugarFeet'
-
 steps:
-  - checkout: none
+  - checkout: self
+    fetchDepth: 0
+    persistCredentials: true
 
   - bash: |
       set -euo pipefail
@@ -22,16 +21,14 @@ steps:
         exit 1
       fi
 
-      git -c http.extraheader="AUTHORIZATION: bearer ${SYSTEM_ACCESSTOKEN}" \
-        clone --mirror "${AZURE_REPO_URL}" SugarFeet.git
+      git config user.email "pipeline@sugarfeet.local"
+      git config user.name "Azure DevOps Mirror"
 
-      cd SugarFeet.git
-
+      git remote remove github 2>/dev/null || true
       git remote add github "https://x-access-token:${GITHUB_PAT}@github.com/Pappas313/SugarFeet.git"
 
-      git push --force --prune github 'refs/heads/*:refs/heads/*'
+      git push --force --prune github 'refs/remotes/origin/*:refs/heads/*'
       git push --force --prune github 'refs/tags/*:refs/tags/*'
     displayName: 'Mirror Azure Repos to GitHub'
     env:
-      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       GITHUB_PAT: $(GITHUB_PAT)
