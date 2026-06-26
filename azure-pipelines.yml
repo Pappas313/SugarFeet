@@ -16,8 +16,8 @@ steps:
   - bash: |
       set -euo pipefail
 
-      if [ -z "${GITHUB_PAT:-}" ]; then
-        echo "GITHUB_PAT pipeline variable is not set."
+      if [ -z "${GITHUB_PAT:-}" ] || [[ "${GITHUB_PAT}" == *'$('* ]]; then
+        echo "GITHUB_PAT pipeline variable is missing or not expanded."
         exit 1
       fi
 
@@ -25,7 +25,9 @@ steps:
       git config user.name "Azure DevOps Mirror"
 
       git remote remove github 2>/dev/null || true
-      git remote add github "https://oauth2:${GITHUB_PAT}@github.com/Pappas313/SugarFeet.git"
+      git remote add github "https://Pappas313:${GITHUB_PAT}@github.com/Pappas313/SugarFeet.git"
+
+      git ls-remote github >/dev/null
 
       git push --force --prune github 'refs/remotes/origin/*:refs/heads/*'
       git push --force --prune github 'refs/tags/*:refs/tags/*'
