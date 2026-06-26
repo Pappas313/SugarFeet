@@ -3,171 +3,22 @@ trigger:
     include:
       - master
 
-pr:
-  branches:
-    include:
-      - master
+pool:
+  vmImage: 'ubuntu-latest'
 
 variables:
-  DOTNET_VERSION: '10.0.x'
-  NODE_VERSION: '20.x'
-  BUILD_CONFIGURATION: 'Release'
+  GITHUB_REPO: 'https://github.com/Pappas313/SugarFeet.git'
 
-stages:
+steps:
+  - checkout: self
+    fetchDepth: 0
+    persistCredentials: true
 
-  # Stage 1 - Build & Test
-  - stage: Build
-    displayName: 'Build and Test'
-    jobs:
+  - script: |
+      git config --global user.email "pipeline@sugafeet.com"
+      git config --global user.name "Azure DevOps Mirror"
 
-      - job: API
-        displayName: '.NET API'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - checkout: self
+      git remote add github https://$(GITHUB_PAT)@github.com/Pappas313/SugarFeet.git
 
-          - task: UseDotNet@2
-            displayName: 'Install .NET SDK'
-            inputs:
-              version: $(DOTNET_VERSION)
-              includePreviewVersions: true
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Restore'
-            inputs:
-              command: restore
-              projects: 'SugarFeet.Api/SugarFeet.Api.csproj'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Build'
-            inputs:
-              command: build
-              projects: 'SugarFeet.Api/SugarFeet.Api.csproj'
-              arguments: '--configuration $(BUILD_CONFIGURATION) --no-restore'
-
-          - task: DotNetCoreCLI@2
-            displayName: 'Test'
-            inputs:
-              command: test
-              projects: '**/*Tests/*.csproj'
-              arguments: '--configuration $(BUILD_CONFIGURATION) --no-build'
-            continueOnError: true
-
-      - job: Client
-        displayName: 'Next.js Client'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - checkout: self
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: $(NODE_VERSION)
-
-          - script: npm ci
-            displayName: 'npm install'
-            workingDirectory: '$(Build.SourcesDirectory)/SugarFeet.Client'
-
-          - script: npm run build
-            displayName: 'Next.js build'
-            workingDirectory: '$(Build.SourcesDirectory)/SugarFeet.Client'
-            env:
-              NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
-
-      - job: Admin
-        displayName: 'Next.js Admin'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - checkout: self
-
-          - task: NodeTool@0
-            displayName: 'Install Node.js'
-            inputs:
-              versionSpec: $(NODE_VERSION)
-
-          - script: npm ci
-            displayName: 'npm install'
-            workingDirectory: '$(Build.SourcesDirectory)/SugarFeet.Admin'
-
-          - script: npm run build
-            displayName: 'Next.js build'
-            workingDirectory: '$(Build.SourcesDirectory)/SugarFeet.Admin'
-            env:
-              NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
-
-  # Stage 2 - Docker Build & Push
-  - stage: Docker
-    displayName: 'Docker Build and Push'
-    dependsOn: Build
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-    jobs:
-
-      - job: PushImages
-        displayName: 'Build and push all images'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - checkout: self
-
-          - task: Docker@2
-            displayName: 'Build and push API'
-            inputs:
-              command: buildAndPush
-              repository: sugarfeet-api
-              dockerfile: '$(Build.SourcesDirectory)/Dockerfile'
-              buildContext: '$(Build.SourcesDirectory)'
-              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
-              tags: |
-                latest
-                $(Build.BuildId)
-
-          - task: Docker@2
-            displayName: 'Build and push Client'
-            inputs:
-              command: buildAndPush
-              repository: sugarfeet-client
-              dockerfile: '$(Build.SourcesDirectory)/SugarFeet.Client/Dockerfile'
-              buildContext: '$(Build.SourcesDirectory)/SugarFeet.Client'
-              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
-              arguments: '--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL)'
-              tags: |
-                latest
-                $(Build.BuildId)
-
-          - task: Docker@2
-            displayName: 'Build and push Admin'
-            inputs:
-              command: buildAndPush
-              repository: sugarfeet-admin
-              dockerfile: '$(Build.SourcesDirectory)/SugarFeet.Admin/Dockerfile'
-              buildContext: '$(Build.SourcesDirectory)/SugarFeet.Admin'
-              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
-              arguments: '--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL)'
-              tags: |
-                latest
-                $(Build.BuildId)
-
-  # Stage 3 - Deploy
-  - stage: Deploy
-    displayName: 'Deploy to Production'
-    dependsOn: Docker
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-    jobs:
-
-      - deployment: Production
-        displayName: 'Deploy all services'
-        pool:
-          vmImage: 'ubuntu-latest'
-        environment: 'production'
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - script: |
-                    echo "API image: $(DOCKER_REGISTRY)/sugarfeet-api:$(Build.BuildId)"
-                    echo "Client image: $(DOCKER_REGISTRY)/sugarfeet-client:$(Build.BuildId)"
-                    echo "Admin image: $(DOCKER_REGISTRY)/sugarfeet-admin:$(Build.BuildId)"
-                  displayName: 'Deploy images'
+      git push github --mirror
+    displayName: 'Mirror to GitHub'
