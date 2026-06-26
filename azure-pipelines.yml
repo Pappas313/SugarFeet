@@ -1,19 +1,110 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
-
 trigger:
 - main
 
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'ubuntu-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  dotnetVersion: '8.0.x'
 
 steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
 
+# =========================
+# 1. Checkout repo
+# =========================
+- checkout: self
+  clean: true
+
+# =========================
+# 2. Install .NET SDK
+# =========================
+- task: UseDotNet@2
+  displayName: 'Install .NET SDK'
+  inputs:
+    packageType: 'sdk'
+    version: '$(dotnetVersion)'
+
+# =========================
+# 3. Restore dependencies
+# =========================
+- task: DotNetCoreCLI@2
+  displayName: 'Restore .NET packages'
+  inputs:
+    command: 'restore'
+    projects: '**/*.csproj'
+
+# =========================
+# 4. Build solution
+# =========================
+- task: DotNetCoreCLI@2
+  displayName: 'Build solution'
+  inputs:
+    command: 'build'
+    projects: '**/*.csproj'
+    arguments: '--configuration $(buildConfiguration) --no-restore'
+
+# =========================
+# 5. Run tests (optional)
+# =========================
+- task: DotNetCoreCLI@2
+  displayName: 'Run tests'
+  inputs:
+    command: 'test'
+    projects: '**/*Tests/*.csproj'
+    arguments: '--configuration $(buildConfiguration) --no-build'
+  continueOnError: true
+
+# =========================
+# 6. Publish backend API
+# =========================
+- task: DotNetCoreCLI@2
+  displayName: 'Publish API'
+  inputs:
+    command: 'publish'
+    projects: '**/SugarFeet.Api.csproj'
+    arguments: >
+      --configuration $(buildConfiguration)
+      --output $(Build.ArtifactStagingDirectory)/api
+      --no-restore
+
+# =========================
+# 7. Install Node.js (for frontend if exists)
+# =========================
+- task: NodeTool@0
+  displayName: 'Install Node.js'
+  inputs:
+    versionSpec: '20.x'
+
+# =========================
+# 8. Build Next.js frontend (safe, ignores .next cache issue)
+# =========================
 - script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+    if [ -d "SugarFeet.Client" ]; then
+      cd SugarFeet.Client
+      npm install
+      npm run build
+    else
+      echo "No frontend found, skipping"
+    fi
+  displayName: 'Build Frontend'
+
+# =========================
+# 9. Publish frontend build (if exists)
+# =========================
+- task: CopyFiles@2
+  displayName: 'Copy frontend output'
+  inputs:
+    SourceFolder: 'SugarFeet.Client/.next'
+    Contents: '**'
+    TargetFolder: '$(Build.ArtifactStagingDirectory)/frontend'
+  condition: succeededOrFailed()
+
+# =========================
+# 10. Publish artifacts
+# =========================
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish Artifact'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'drop'
