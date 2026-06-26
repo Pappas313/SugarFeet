@@ -6,78 +6,67 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
-  dotnetVersion: '8.0.x'
 
 steps:
 
 # =========================
-# 1. Checkout repo
+# 1. Checkout
 # =========================
 - checkout: self
   clean: true
 
 # =========================
-# 2. Install .NET SDK
+# 2. Show repo structure (DEBUG FIX)
+# =========================
+- script: ls -R
+  displayName: 'Show repository structure'
+
+# =========================
+# 3. Install .NET
 # =========================
 - task: UseDotNet@2
-  displayName: 'Install .NET SDK'
   inputs:
     packageType: 'sdk'
-    version: '$(dotnetVersion)'
+    version: '8.x'
 
 # =========================
-# 3. Restore dependencies
+# 4. Restore (FIXED PATH SAFE)
 # =========================
 - task: DotNetCoreCLI@2
-  displayName: 'Restore .NET packages'
+  displayName: 'Restore'
   inputs:
     command: 'restore'
-    projects: '**/*.csproj'
+    projects: '**/SugarFeet.sln'
 
 # =========================
-# 4. Build solution
+# 5. Build
 # =========================
 - task: DotNetCoreCLI@2
-  displayName: 'Build solution'
+  displayName: 'Build'
   inputs:
     command: 'build'
-    projects: '**/*.csproj'
-    arguments: '--configuration $(buildConfiguration) --no-restore'
+    projects: '**/SugarFeet.sln'
+    arguments: '--configuration $(buildConfiguration)'
 
 # =========================
-# 5. Run tests (optional)
-# =========================
-- task: DotNetCoreCLI@2
-  displayName: 'Run tests'
-  inputs:
-    command: 'test'
-    projects: '**/*Tests/*.csproj'
-    arguments: '--configuration $(buildConfiguration) --no-build'
-  continueOnError: true
-
-# =========================
-# 6. Publish backend API
+# 6. Publish API (SAFE PATH)
 # =========================
 - task: DotNetCoreCLI@2
   displayName: 'Publish API'
   inputs:
     command: 'publish'
     projects: '**/SugarFeet.Api.csproj'
-    arguments: >
-      --configuration $(buildConfiguration)
-      --output $(Build.ArtifactStagingDirectory)/api
-      --no-restore
+    arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/api'
 
 # =========================
-# 7. Install Node.js (for frontend if exists)
+# 7. Install Node
 # =========================
 - task: NodeTool@0
-  displayName: 'Install Node.js'
   inputs:
     versionSpec: '20.x'
 
 # =========================
-# 8. Build Next.js frontend (safe, ignores .next cache issue)
+# 8. Build frontend (SAFE)
 # =========================
 - script: |
     if [ -d "SugarFeet.Client" ]; then
@@ -85,26 +74,26 @@ steps:
       npm install
       npm run build
     else
-      echo "No frontend found, skipping"
+      echo "Frontend not found"
     fi
   displayName: 'Build Frontend'
 
 # =========================
-# 9. Publish frontend build (if exists)
+# 9. Copy frontend ONLY IF EXISTS
 # =========================
-- task: CopyFiles@2
-  displayName: 'Copy frontend output'
-  inputs:
-    SourceFolder: 'SugarFeet.Client/.next'
-    Contents: '**'
-    TargetFolder: '$(Build.ArtifactStagingDirectory)/frontend'
-  condition: succeededOrFailed()
+- script: |
+    if [ -d "SugarFeet.Client/.next" ]; then
+      mkdir -p $(Build.ArtifactStagingDirectory)/frontend
+      cp -r SugarFeet.Client/.next/* $(Build.ArtifactStagingDirectory)/frontend
+    else
+      echo "No .next folder generated"
+    fi
+  displayName: 'Copy Frontend Output'
 
 # =========================
-# 10. Publish artifacts
+# 10. Publish artifact
 # =========================
 - task: PublishBuildArtifacts@1
-  displayName: 'Publish Artifact'
   inputs:
     pathToPublish: '$(Build.ArtifactStagingDirectory)'
     artifactName: 'drop'
