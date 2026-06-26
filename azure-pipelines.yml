@@ -15,11 +15,9 @@ variables:
 
 stages:
 
-  # ─────────────────────────────────────────────
-  # Stage 1 – Build & Test
-  # ─────────────────────────────────────────────
+  # Stage 1 - Build & Test
   - stage: Build
-    displayName: 'Build & Test'
+    displayName: 'Build and Test'
     jobs:
 
       - job: API
@@ -100,24 +98,22 @@ stages:
             env:
               NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
 
-  # ─────────────────────────────────────────────
-  # Stage 2 – Docker Build & Push
-  # ─────────────────────────────────────────────
+  # Stage 2 - Docker Build & Push
   - stage: Docker
-    displayName: 'Docker Build & Push'
+    displayName: 'Docker Build and Push'
     dependsOn: Build
     condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
     jobs:
 
       - job: PushImages
-        displayName: 'Build & push all images'
+        displayName: 'Build and push all images'
         pool:
           vmImage: 'ubuntu-latest'
         steps:
           - checkout: self
 
           - task: Docker@2
-            displayName: 'Build & push API'
+            displayName: 'Build and push API'
             inputs:
               command: buildAndPush
               repository: sugarfeet-api
@@ -129,7 +125,7 @@ stages:
                 $(Build.BuildId)
 
           - task: Docker@2
-            displayName: 'Build & push Client'
+            displayName: 'Build and push Client'
             inputs:
               command: buildAndPush
               repository: sugarfeet-client
@@ -142,7 +138,7 @@ stages:
                 $(Build.BuildId)
 
           - task: Docker@2
-            displayName: 'Build & push Admin'
+            displayName: 'Build and push Admin'
             inputs:
               command: buildAndPush
               repository: sugarfeet-admin
@@ -154,9 +150,7 @@ stages:
                 latest
                 $(Build.BuildId)
 
-  # ─────────────────────────────────────────────
-  # Stage 3 – Deploy
-  # ─────────────────────────────────────────────
+  # Stage 3 - Deploy
   - stage: Deploy
     displayName: 'Deploy to Production'
     dependsOn: Docker
@@ -173,9 +167,7 @@ stages:
             deploy:
               steps:
                 - script: |
-                    echo "Deploy step — replace with your deployment target"
-                    echo "API image:    $(DOCKER_REGISTRY)/sugarfeet-api:$(Build.BuildId)"
+                    echo "API image: $(DOCKER_REGISTRY)/sugarfeet-api:$(Build.BuildId)"
                     echo "Client image: $(DOCKER_REGISTRY)/sugarfeet-client:$(Build.BuildId)"
-                    echo "Admin image:  $(DOCKER_REGISTRY)/sugarfeet-admin:$(Build.BuildId)"
+                    echo "Admin image: $(DOCKER_REGISTRY)/sugarfeet-admin:$(Build.BuildId)"
                   displayName: 'Deploy images'
-Pappas313.SugarFeet
