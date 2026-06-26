@@ -1,111 +1,181 @@
 trigger:
-- main
+  branches:
+    include:
+      - master
 
-pool:
-  vmImage: 'ubuntu-latest'
+pr:
+  branches:
+    include:
+      - master
 
 variables:
-  buildConfiguration: 'Release'
+  REGISTRY: $(DOCKER_REGISTRY)        # e.g. sugafeet.azurecr.io
+  API_IMAGE: $(REGISTRY)/sugarfeet-api
+  CLIENT_IMAGE: $(REGISTRY)/sugarfeet-client
+  ADMIN_IMAGE: $(REGISTRY)/sugarfeet-admin
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '20.x'
+  BUILD_CONFIGURATION: 'Release'
 
-steps:
+stages:
 
-# =========================
-# 1. Checkout
-# =========================
-- checkout: self
-  clean: true
+  # ─────────────────────────────────────────────
+  # Stage 1 – Build & Test
+  # ─────────────────────────────────────────────
+  - stage: Build
+    displayName: 'Build & Test'
+    jobs:
 
-# =========================
-# 2. DEBUG (SHOW EXACT STRUCTURE)
-# =========================
-- script: |
-    echo "ROOT FILES:"
-    ls -la
-    echo "FULL TREE:"
-    find .
-  displayName: 'Debug repo structure'
+      - job: API
+        displayName: '.NET API'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UseDotNet@2
+            displayName: 'Install .NET SDK'
+            inputs:
+              version: $(DOTNET_VERSION)
+              includePreviewVersions: true
 
-# =========================
-# 3. GO INTO PROJECT ROOT (IMPORTANT FIX)
-# =========================
-- script: |
-    echo "Moving into project folder..."
-    cd SugarFeet || true
-    ls -la
-  displayName: 'Enter project directory'
+          - task: DotNetCoreCLI@2
+            displayName: 'Restore'
+            inputs:
+              command: restore
+              projects: 'SugarFeet.Api/SugarFeet.Api.csproj'
 
-# =========================
-# 4. Install .NET SDK
-# =========================
-- task: UseDotNet@2
-  inputs:
-    packageType: 'sdk'
-    version: '8.x'
+          - task: DotNetCoreCLI@2
+            displayName: 'Build'
+            inputs:
+              command: build
+              projects: 'SugarFeet.Api/SugarFeet.Api.csproj'
+              arguments: '--configuration $(BUILD_CONFIGURATION) --no-restore'
 
-# =========================
-# 5. RESTORE (FORCE CORRECT PATH)
-# =========================
-- task: DotNetCoreCLI@2
-  displayName: 'Restore'
-  inputs:
-    command: 'restore'
-    projects: 'SugarFeet/**/*.csproj'
+          - task: DotNetCoreCLI@2
+            displayName: 'Test'
+            inputs:
+              command: test
+              projects: '**/*Tests/*.csproj'
+              arguments: '--configuration $(BUILD_CONFIGURATION) --no-build'
+            continueOnError: true
 
-# =========================
-# 6. BUILD
-# =========================
-- task: DotNetCoreCLI@2
-  displayName: 'Build'
-  inputs:
-    command: 'build'
-    projects: 'SugarFeet/**/*.csproj'
-    arguments: '--configuration $(buildConfiguration)'
+      - job: Client
+        displayName: 'Next.js Client'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(NODE_VERSION)
 
-# =========================
-# 7. PUBLISH API
-# =========================
-- task: DotNetCoreCLI@2
-  displayName: 'Publish API'
-  inputs:
-    command: 'publish'
-    projects: 'SugarFeet/**/SugarFeet.Api.csproj'
-    arguments: >
-      --configuration $(buildConfiguration)
-      --output $(Build.ArtifactStagingDirectory)/api
+          - script: npm ci
+            displayName: 'npm install'
+            workingDirectory: SugarFeet.Client
 
-# =========================
-# 8. NODE FRONTEND
-# =========================
-- task: NodeTool@0
-  inputs:
-    versionSpec: '20.x'
+          - script: npm run build
+            displayName: 'Next.js build'
+            workingDirectory: SugarFeet.Client
+            env:
+              NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
 
-- script: |
-    if [ -d "SugarFeet/SugarFeet.Client" ]; then
-      cd SugarFeet/SugarFeet.Client
-      npm install
-      npm run build
-    else
-      echo "Frontend not found"
-    fi
-  displayName: 'Build Frontend'
+      - job: Admin
+        displayName: 'Next.js Admin'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: NodeTool@0
+            displayName: 'Install Node.js'
+            inputs:
+              versionSpec: $(NODE_VERSION)
 
-# =========================
-# 9. COPY FRONTEND (SAFE)
-# =========================
-- script: |
-    if [ -d "SugarFeet/SugarFeet.Client/.next" ]; then
-      mkdir -p $(Build.ArtifactStagingDirectory)/frontend
-      cp -r SugarFeet/SugarFeet.Client/.next/* $(Build.ArtifactStagingDirectory)/frontend
-    else
-      echo "No frontend build output"
-    fi
-  displayName: 'Copy Frontend'
+          - script: npm ci
+            displayName: 'npm install'
+            workingDirectory: SugarFeet.Admin
 
-# =========================
-# 10. PUBLISH ARTIFACT
-# =========================
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathToPublish: '$(Build.ArtifactStagingDirectory)'
-    artifactName: 'drop'
+          - script: npm run build
+            displayName: 'Next.js build'
+            workingDirectory: SugarFeet.Admin
+            env:
+              NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)
+
+  # ─────────────────────────────────────────────
+  # Stage 2 – Docker Build & Push
+  # ─────────────────────────────────────────────
+  - stage: Docker
+    displayName: 'Docker Build & Push'
+    dependsOn: Build
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    jobs:
+
+      - job: PushImages
+        displayName: 'Build & push all images'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: Docker@2
+            displayName: 'Login to registry'
+            inputs:
+              command: login
+              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
+
+          - task: Docker@2
+            displayName: 'Build & push API'
+            inputs:
+              command: buildAndPush
+              repository: sugarfeet-api
+              dockerfile: Dockerfile
+              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
+              tags: |
+                latest
+                $(Build.BuildId)
+
+          - task: Docker@2
+            displayName: 'Build & push Client'
+            inputs:
+              command: buildAndPush
+              repository: sugarfeet-client
+              dockerfile: SugarFeet.Client/Dockerfile
+              buildContext: SugarFeet.Client
+              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
+              arguments: '--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL)'
+              tags: |
+                latest
+                $(Build.BuildId)
+
+          - task: Docker@2
+            displayName: 'Build & push Admin'
+            inputs:
+              command: buildAndPush
+              repository: sugarfeet-admin
+              dockerfile: SugarFeet.Admin/Dockerfile
+              buildContext: SugarFeet.Admin
+              containerRegistry: $(DOCKER_SERVICE_CONNECTION)
+              arguments: '--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL)'
+              tags: |
+                latest
+                $(Build.BuildId)
+
+  # ─────────────────────────────────────────────
+  # Stage 3 – Deploy
+  # ─────────────────────────────────────────────
+  - stage: Deploy
+    displayName: 'Deploy to Production'
+    dependsOn: Docker
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+    jobs:
+
+      - deployment: Production
+        displayName: 'Deploy all services'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - script: |
+                    echo "Deploy step — replace with your deployment target"
+                    echo "API image:    $(API_IMAGE):$(Build.BuildId)"
+                    echo "Client image: $(CLIENT_IMAGE):$(Build.BuildId)"
+                    echo "Admin image:  $(ADMIN_IMAGE):$(Build.BuildId)"
+                  displayName: 'Deploy images'
