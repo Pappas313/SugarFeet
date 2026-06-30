@@ -6,12 +6,6 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
-variables:
-  # Add RAILWAY_TOKEN as a secret pipeline variable in Azure DevOps:
-  # Pipelines → Library → Variable Groups  OR  Edit pipeline → Variables
-  - name: RAILWAY_TOKEN
-    value: $(RAILWAY_TOKEN)
-
 steps:
   - checkout: self
     displayName: Checkout source
