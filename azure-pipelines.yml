@@ -9,26 +9,14 @@ pool:
 steps:
   - checkout: self
     displayName: Checkout source
-
-  - task: NodeTool@0
-    displayName: Install Node.js (required by Railway CLI)
-    inputs:
-      versionSpec: '20.x'
-
-  - script: npm install -g @railway/cli
-    displayName: Install Railway CLI
+    persistCredentials: true
+    fetchDepth: 0
 
   - script: |
-      if [ -z "$RAILWAY_TOKEN" ]; then
-        echo "##[error]RAILWAY_TOKEN is empty. Add it as a secret pipeline variable."
-        exit 1
-      fi
-      echo "RAILWAY_TOKEN is set (length: ${#RAILWAY_TOKEN})"
-    displayName: Verify Railway token
+      git config user.email "azure-pipeline@sugarfeet.com"
+      git config user.name "Azure Pipeline"
+      git remote add github https://$(GITHUB_TOKEN)@github.com/Pappas313/SugarFeet.git
+      git push github HEAD:main --force
+    displayName: Mirror to GitHub
     env:
-      RAILWAY_TOKEN: $(RAILWAY_TOKEN)
-
-  - script: railway up --detach
-    displayName: Deploy to Railway
-    env:
-      RAILWAY_TOKEN: $(RAILWAY_TOKEN)
+      GITHUB_TOKEN: $(GITHUB_TOKEN)
