@@ -1,36 +1,30 @@
 trigger:
   branches:
     include:
-      - '*'
-
-pr: none
+      - master
 
 pool:
   vmImage: ubuntu-latest
 
+variables:
+  # Add RAILWAY_TOKEN as a secret pipeline variable in Azure DevOps:
+  # Pipelines → Library → Variable Groups  OR  Edit pipeline → Variables
+  - name: RAILWAY_TOKEN
+    value: $(RAILWAY_TOKEN)
+
 steps:
   - checkout: self
-    fetchDepth: 0
-    persistCredentials: true
+    displayName: Checkout source
 
-  - bash: |
-      set -euo pipefail
+  - task: NodeTool@0
+    displayName: Install Node.js (required by Railway CLI)
+    inputs:
+      versionSpec: '20.x'
 
-      if [ -z "${GITHUB_PAT:-}" ] || [[ "${GITHUB_PAT}" == *'$('* ]]; then
-        echo "GITHUB_PAT pipeline variable is missing or not expanded."
-        exit 1
-      fi
+  - script: npm install -g @railway/cli
+    displayName: Install Railway CLI
 
-      git config user.email "pipeline@sugarfeet.local"
-      git config user.name "Azure DevOps Mirror"
-
-      git remote remove github 2>/dev/null || true
-      git remote add github "https://Pappas313:${GITHUB_PAT}@github.com/Pappas313/SugarFeet.git"
-
-      git ls-remote github >/dev/null
-
-      git push --force --prune github 'refs/remotes/origin/*:refs/heads/*'
-      git push --force --prune github 'refs/tags/*:refs/tags/*'
-    displayName: 'Mirror Azure Repos to GitHub'
+  - script: railway up --detach
+    displayName: Deploy to Railway
     env:
-      GITHUB_PAT: $(GITHUB_PAT)
+      RAILWAY_TOKEN: $(RAILWAY_TOKEN)
