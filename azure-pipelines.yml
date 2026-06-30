@@ -24,7 +24,6 @@ steps:
         exit 1
       fi
       echo "RAILWAY_TOKEN is set (length: ${#RAILWAY_TOKEN})"
-      railway whoami
     displayName: Verify Railway token
     env:
       RAILWAY_TOKEN: $(RAILWAY_TOKEN)
